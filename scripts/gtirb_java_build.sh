@@ -52,7 +52,17 @@ PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v27.0/
 if [[ -x "$PLUGIN_REPO/protoc/bin/protoc" ]]; then
     protoc="$PLUGIN_REPO/protoc/bin/protoc"
 elif command -v protoc &>/dev/null; then
-    protoc=protoc
+    # protobuf-java 4.x requires protoc >= 27; older system protoc generates 3.x-only code
+    PROTOC_MAJOR=$(protoc --version 2>&1 | grep -oP '(?<=libprotoc )\d+')
+    if [[ "${PROTOC_MAJOR:-0}" -ge 27 ]]; then
+        protoc=protoc
+    else
+        echo "System protoc is too old ($(protoc --version)), downloading protoc 27.0..."
+        wget -q "$PROTOC_URL" -O /tmp/protoc.zip &&
+        unzip -q /tmp/protoc.zip -d "$PLUGIN_REPO/protoc" &&
+        rm /tmp/protoc.zip || exit
+        protoc="$PLUGIN_REPO/protoc/bin/protoc"
+    fi
 else
     echo "Downloading protoc 27.0..."
     wget -q "$PROTOC_URL" -O /tmp/protoc.zip &&
@@ -80,7 +90,7 @@ cd gtirb-src &&
 $protoc --java_out=java --proto_path=proto proto/*.proto || exit
 
 # Update protobuf-java version to match protoc 27.x
-sed -i "s/protobuf-java:[0-9.]*/protobuf-java:4.27.0/" java/build.gradle
+sed -i "s/protobuf-java:[0-9][^'\"[:space:]]*/protobuf-java:4.27.0/" java/build.gradle
 
 cd java &&
 "$GRADLE_BIN" build -x test || exit
